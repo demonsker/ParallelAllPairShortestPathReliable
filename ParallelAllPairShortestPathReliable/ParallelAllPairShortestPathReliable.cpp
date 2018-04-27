@@ -15,6 +15,7 @@ int get_beginindex_frominput(int);
 void process_print(int**, int);
 void array_print(int**);
 void array_copy(int**, int**, int);
+void fix_path(int***, int***, int[SIZE], int, int, int);
 void log_save(float);
 
 int world_size, world_rank;
@@ -42,7 +43,7 @@ int main(int argc, char** argv) {
 	int i, j;
 	int ***part_of_distance, ***part_of_path;
 	int *temp_of_distance;
-	temp_of_distance = (int(*)) malloc(sizeof(int));
+	temp_of_distance = (int(*)) malloc(SIZE * sizeof(int));
 
 	part_of_distance = (int***)malloc(SIZE * sizeof(int**));
 	part_of_path = (int***)malloc(SIZE * sizeof(int**));
@@ -189,6 +190,105 @@ void find_AllPairShortestPath(int ***part_of_distance, int ***part_of_path, int 
 			MPI_Recv(temp_of_distance, SIZE, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		}
 		
+	}
+}
+
+void fix_path(int ***part_of_distance, int ***part_of_path, int temp_of_distance[SIZE], int row_per_process, int u, int v)
+{/*
+	//mark a broken edge 
+	alldistance[0][u][v] = INF;
+
+	//useless edge
+	if (allpath[SIZE - 1][u][v] != v)
+	{
+		printf("This edge is useless\n");
+		return;
+	}
+
+	//re-calculate : edge broke at node 0
+	if (u == 0)
+	{
+		printf("Re-Calculate\n");
+		find_AllPairShortestPath(alldistance, allpath);
+		return;
+	}
+
+	//find new shortest path when pass k = 0 to k < u
+	for (int k = 0; k < u; k++)
+	{
+		int new_weight = alldistance[k][u][k] + alldistance[k][k][v];
+
+		if (new_weight < alldistance[k][u][v])
+		{
+			alldistance[k][u][v] = new_weight;
+			allpath[k][u][v] = allpath[k][u][k];
+		}
+		alldistance[k + 1][u][v] = alldistance[k][u][v];
+		allpath[k + 1][u][v] = allpath[k][u][v];
+	}
+
+	//Copy colum v from k = u-1 to u
+	for (int i = 0; i < SIZE; i++)
+	{
+		alldistance[u][i][v] = alldistance[u - 1][i][v];
+		allpath[u][i][v] = allpath[u - 1][i][v];
+	}
+	*/
+	//Begin calculate at k = u
+	//get postion of data from input
+	int row_begin = get_beginindex_frominput(world_rank);
+	int row_end = row_begin + get_datasize_per_process(world_rank);
+
+	//Loop when k < SIZE
+	for (int k = 0; k < SIZE; k++)
+	{
+		//find min route  when pass node k
+		for (int i = 0; i < row_per_process; i++)
+		{
+			for (int j = 0; j < SIZE; j++)
+			{
+				int new_weight = part_of_distance[k][i][k] + temp_of_distance[j];
+
+				if (new_weight <  part_of_distance[k][i][j])
+				{
+					part_of_path[k][i][j] = part_of_path[k][i][k];
+					part_of_distance[k][i][j] = new_weight;
+				}
+
+			}
+		}
+
+		if (k + 1 < SIZE)
+		{
+			array_copy(part_of_distance[k], part_of_distance[k + 1], row_per_process);
+			array_copy(part_of_path[k], part_of_path[k + 1], row_per_process);
+		}
+		else  break;
+
+		//Find processor that must send pass node data
+		if ((k + 1) >= row_begin && (k + 1) < row_end)
+		{
+			// index of pass node data
+			int index = k + 1 - row_begin;
+
+			int  r;
+
+			//send pass node data to another processor
+			for (r = 0; r < world_size; r++)
+				if (r != world_rank) //not send to itself
+				{
+					MPI_Send(part_of_distance[k][index], SIZE, MPI_INT, r, 0, MPI_COMM_WORLD);
+				}
+
+			//update pass node data self
+			for (r = 0; r < SIZE; r++)
+				temp_of_distance[r] = part_of_distance[k][index][r];
+		}
+		else
+		{	//receive pass node data
+			MPI_Recv(temp_of_distance, SIZE, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		}
+
 	}
 }
 
